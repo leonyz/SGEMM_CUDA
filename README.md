@@ -42,9 +42,9 @@ make profile KERNEL=4
 
 CUDA terminology:
 
-* Each kernel creates a new *grid*,
-* Each grid has up-to-3 dimensions which index *blocks*,
-* Each block in turn has up-to-3 dimensions which index *threads*,
+* Each kernel creates a *grid*,
+* Each grid has up-to-3 dimensions of *blocks*,
+* Each block in turn has up-to-3 dimensions of *threads*,
 * Each block has access to the same chunk of SMEM (shared memory)
 
 The number of threads in a block is controlled by a vector usually called blockDim, and the number of blocks in a grid is defined by a vector usually called gridDim. These are provided in a call to the kernel so aren't defined in the kernel itself.
