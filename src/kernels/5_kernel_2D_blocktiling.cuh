@@ -33,21 +33,22 @@ __global__ void __launch_bounds__((BM * BN) / (TM * TN), 1)
     C = C + A_row * N + B_col;
     C = C + thread_row * N + thread_col;
 
-    // calculate the upper-left corner of the chunk of A and B that our particular
-    // thread is loading into As and Bs
-    const uint thread_As_entries_to_load = BM * BK / blockDim.x;
-    const uint thread_As_load_row = threadIdx.x / (BK / thread_As_entries_to_load);
-    const uint thread_As_load_col_tmp = threadIdx.x % (BK / thread_As_entries_to_load);
-    const uint thread_As_load_col = thread_As_load_col_tmp * thread_As_entries_to_load;
-
-    const uint thread_Bs_entries_to_load = BK * BN / blockDim.x;
-    const uint thread_Bs_load_row = threadIdx.x / (BN / thread_Bs_entries_to_load);
-    const uint thread_Bs_load_col_tmp = threadIdx.x % (BN / thread_Bs_entries_to_load);
-    const uint thread_Bs_load_col = thread_Bs_load_col_tmp * thread_Bs_entries_to_load;
-
     // initialize As and Bs
     __shared__ float As[BM * BK];
     __shared__ float Bs[BK * BN];
+    
+    
+    // calculate the upper-left corner of the chunk of A and B that our particular
+    // thread is loading into As and Bs
+    const uint As_rows_per_load = blockDim.x / BK;
+    const uint thread_As_entries_to_load = BM * BK / blockDim.x;
+    const uint thread_As_load_row = threadIdx.x / BK;
+    const uint thread_As_load_col = threadIdx.x % BK;
+
+    const uint Bs_rows_per_load = blockDim.x / BN;
+    const uint thread_Bs_entries_to_load = BK * BN / blockDim.x;
+    const uint thread_Bs_load_row = threadIdx.x / BN;
+    const uint thread_Bs_load_col = threadIdx.x % BN;
 
     // initialize the parts of As and Bs we'll use for computing entries of C
     float A_local[TM] = {0.0};
@@ -60,10 +61,10 @@ __global__ void __launch_bounds__((BM * BN) / (TM * TN), 1)
       for (int i = 0; i * BK < K; i++) {
         // step 0: load from A and B into As and Bs
         for (int load_idx = 0; load_idx < thread_As_entries_to_load; load_idx++) {
-          As[thread_As_load_row * BK + thread_As_load_col + load_idx] = A[thread_As_load_row * K + thread_As_load_col + load_idx];
+          As[thread_As_load_row * BK + thread_As_load_col + load_idx * As_rows_per_load * BK] = A[thread_As_load_row * K + thread_As_load_col + load_idx * As_rows_per_load * K];
         }
         for (int load_idx = 0; load_idx < thread_Bs_entries_to_load; load_idx++) {
-          Bs[thread_Bs_load_row * BN + thread_Bs_load_col + load_idx] = B[thread_Bs_load_row * N + thread_Bs_load_col + load_idx];
+          Bs[thread_Bs_load_row * BN + thread_Bs_load_col + load_idx * Bs_rows_per_load * BN] = B[thread_Bs_load_row * N + thread_Bs_load_col + load_idx * Bs_rows_per_load * N];
         }
 
         __syncthreads();
