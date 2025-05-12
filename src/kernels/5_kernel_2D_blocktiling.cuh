@@ -40,13 +40,15 @@ __global__ void __launch_bounds__((BM * BN) / (TM * TN), 1)
     
     // calculate the upper-left corner of the chunk of A and B that our particular
     // thread is loading into As and Bs
-    const uint As_rows_per_load = blockDim.x / BK;
-    const uint thread_As_entries_to_load = BM * BK / blockDim.x;
+    const uint num_threads = BM * BN / (TM * TN);
+
+    const uint As_rows_per_load = num_threads / BK;
+    const uint thread_As_entries_to_load = BM * BK / num_threads;
     const uint thread_As_load_row = threadIdx.x / BK;
     const uint thread_As_load_col = threadIdx.x % BK;
 
-    const uint Bs_rows_per_load = blockDim.x / BN;
-    const uint thread_Bs_entries_to_load = BK * BN / blockDim.x;
+    const uint Bs_rows_per_load = num_threads / BN;
+    const uint thread_Bs_entries_to_load = BK * BN / num_threads;
     const uint thread_Bs_load_row = threadIdx.x / BN;
     const uint thread_Bs_load_col = threadIdx.x % BN;
 
