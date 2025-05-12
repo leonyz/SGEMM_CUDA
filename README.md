@@ -57,7 +57,7 @@ We can access the size of each block (in the number of threads) using `blockDim.
 * kernel 2 (global memory coalescing): 813.3 GFLOPs
 * kernel 3 (shared memory blocking): 1132.8 GFLOPs
 * kernel 4 (1D block tiling): 3470.0 GFLOPs
-* kernel 5 (2D block tiling): 5227.5 GFLOPs
+* kernel 5 (2D block tiling): 7140.9 GFLOPs
 ##### Kernel 1 implementation notes
 
 This one is pretty straightforward. We have our row and column of A & B for our relevant thread; we run through a for-loop to reduce along the K dim.
@@ -347,7 +347,101 @@ So let's up the arithmetic intensity even more -- instead of each thread computi
 * The initial correct version of my code ran at 1532.5 GFLOPs, much slower than Kernel 4. 
 	* My first issue is that I `TM x BK` and `BK x TN` registers instead of just looping over BK. [Making BK the outermost loop](https://github.com/leonyz/SGEMM_CUDA/commit/7c16b7eab54e4e8c66f411019402754f0a77168a) brought my kernel to 4622.7 GFLOPs; faster than Kernel 4 but still slower than Simon's implementation which gets 6877.9 GFLOPs. 
 	* Rereading the blogpost more carefully, I noticed that I was loading into As and Bs by having each thread handle consecutive entries of A and B rather than doing strided memory accesses. [Fixing this](https://github.com/leonyz/SGEMM_CUDA/commit/8c84538141f0d897888c415ccbfd94aee3fc47e1) took me to 5227.5 GFLOPs.
+	* More experimentation revealed that the remaining big difference was that my kernel calculated some indices using `blockDim.x` while the original kernel calculated an equivalent value as `BM * BN / TM / TN`. [o3 says](https://chatgpt.com/share/682254b5-1878-8001-948f-a0b5eeb4d237) this is because `blockDim.x` is fetched from constant memory and is copied into a register of every thread in the warp, which means only one warp at a time can issue the load and compiler can't take advantage of the optimizer. (Godbolt [here](https://godbolt.org/#z:OYLghAFBqd5TKALEBjA9gEwKYFFMCWALugE4A0BIEAZgQDbYB2AhgLbYgDkAjF%2BTXRMiAZVQtGIHgBYBQogFUAztgAKAD24AGfgCsp5eiyahUAV0wtyKxqiIEh1ZpgDC6embZMQAJnLOAGQImbAA5TwAjbFJfWQAHdCViByY3Dy9fcgSk%2ByEgkPC2KJifWRtsOxSRIhZSIjTPbz9yyqFq2qJ8sMjo2OsauoaM5oHO4O6i3tKASmt0M1JUTi4AUh8AZjjSFmA2FgBqISWVrQBBE/ON4NQPHH2V9ZdxJRU6h9wLtfXr2%2Bx7x9QSiIhHQ70%2BVyYNwsfweTyBmHoBAiYLOXx%2B0P%2BTzMESMSgA%2BgA3HwAOiQKMu30hv0x5kseNIZmEBA4pPJFzxeOA9HQEQkHP2BPQBEw%2ByUwGwbDYnO5vPoeI4UowEmwSiWEGCRH2AFlyPsNftQrr9QBpXU0bksTUSOJIKwXfYOx1O50u11ul0YJhA/bm9CW/YAKlOus93t9/oDACFyPb3XH4/Hw5qojUzRbNQGXNN7gB2SOx/WRgIAeRcxpEAEkAFofdYAEXWPge%2BbODtDmv1qAASugAO7/Ov7HHoVAAawrmHUxPUgf2RdL5eruHuPkj%2BwgRCQpGwLEwE6nM4A9HOS2XKzXps3Y%2B29cJ9qg0gOh9yx/viQBPWfzs9Lldrjdbjue6TtOK4AKwngu564Je6wtucrb7Iex4EDQoo1EQErMB2Sj7CESwvLUn4kPseyjn8m7BMAuG9mQo77IyOCkPs9iMPsACOZjGPYABelopAWaEQN2faYtqK4AGxrBJ96PrCBrZiseaxg6SYsWwcRPloxJaFeiGqWQ676gQWnNnqYnGmZaz5quBCKcp%2BmOkQGl/g8g7nGBkYif2Ab7Maf56isYGDr5%2BaeSZvmhAFD7uEFdZ6acTpKfFjkuEFXk9j5BrRWkcVPtatqzs5mnWUO2A1LOaWed5s5RaVMX0HFCUOslnw5nWXCzPQ3Bgfw3hcDo5DoNwLgKHWiVpaupVKPMiwwhsfDkEQ2idbMSBAb0ECzKOsTEgAnAdh1HUdEmGNw0h9StQ3cPwSggFoS0rbMcCwCgGAaQw0SUNQ71xJ9MRMASqCoDwPA5uQOAEgQSwAGoENgvbFnEzBXXQ9CYaQd0QBEV0RMERHcIt70cMIxZMPQ75XTgewmJIA38IQ26VASKpXdg6gVGYmGE/wGrYN19OGEi2ykO%2Bbg4FdRCkMyPOzOaOxKHDCNIyjvD8IIwhiMqUiyBrigqBoV36DwhjGKYFhWIiER3ZAszoHEuRetwAC0xbrPszt1qEda4JGCgAOIe874ohNsmHOxgOBubUqBkvWv1c9geIABynZH2BuelCeYSnp1KFKqd5c7zsO%2BoLBKM79uO0obnOwSHvwm5qDWdZYO3fzFSO04TCuO4jQGIE4yFMUBjZMkQhDN4Jtj47XTD70JstI77SDH3GSLx3rRMCvYwFD0MSL6Mk8GECHRz/vUizDNCxLL4XU9ZdgvDVwBowy4Lj7KDxI5jp674MQhkvg%2BGmPwZa9NphrQ2jELa5AdqlH2sdRBB1ToCwuuQfqg1n63Xuo9cB5AXrIDQFgPAhASAUCoLQT6rAOA8zkJrcQkgZB0P1moTQgt9B%2BCMCYNAFtrCby7hAZwx8/CDz3pMEo8REjj1SGvJoWQpGzyHhfUofDbDLyPrIzIS8qijHPuIvop9V7pDkYY3eEwR4zDmDfZYXwtg7D2IcSEGdUSoghFCO4sJnivCIGyNx1JPHwgcL4yk7iYQAnhFbYJ6IPEAmxLiQkJI44fFcSE/xsS6QMiZCyJJnwzgci5DyPkeIBRChFGKCUUoCmynlBKPEjIlSMFVNgTA6o7w6lvJqQ0HS/Jpj9FaegNo7SOQTCMkZN41JBhDEIMM6ZAzRhUqMxZcY1IpisD6WZmZ7LwQdIWU8i4axuUbM1e80yOx3hqm5Z8I5xwgRnKFPZ0EAoAW3LuN8M41gQW/PsmCxybydjkvWK5r4QKfnuVBX8pVnlATeUhSCP4LwJVjMhPUaFT6YRJjhPCFQVRKCIixdApEWDkRYkgKiNE6IMR7tEFin0OJcSZHxR2gl1wXMeOJaS0lZLuDEqELZCy1LFS0jpY5BlmKtI7KZOC5l5KWSlS3WyfLhnqRKlNQFHkMqiV8v5UqBA8qhXShFbK9VcrBRFbmFKiVHRVQ1VlOqq4uWNWCvlAZhVfKCtKqsyqWdMq1RyrFU1cFYytVRO1TqZ0uC9XQVdZ%2Bo1xr7EmjZNc185orkbKAp6kDdybW2rtJBSCUHnX4GwEA6wf5gSjU/G61gcFgJ0M9RAEA3roA%2BowchP1m1/VbSAQGwNQbg0htDbAStEbIwwerBgGMsY40FnjVgotaHE2wmTCmVMJRmzpoNRmncCAszuoLdmnNuZq0oMIfmV0rYizFsQyW0ti1qzlkYaiw6Vb9UWnrLWjDdbyGUKwo2mQuHm0sELa28A7YOxSHu127tPbe19gHIOIdoiWmwBHYh0dFhxzrNnJOqdyDp0ztVDtidc7WALlJJ1xdS7l0ruB6Ztd67O0bvHeVkY26qO3Y4QRPdj4m1EeYhe8icgpB44J6ReiR4bzUTojoIntFtF0Uo/Rh8ZOaOU3UcTC8r6zVvjwe%2BEbH6YO4K/d%2Bn8eDf1/hAf%2BZDU26fTeAzNTFqA5vgXmxBBauBoLHddLg2CHq1tWuGnwRaQBgW0snHge0JI5h8DwdYoNpA5jAuWrzWDcF1vwQ2htKAB1LG%2BsJDt/1QjsGWKEN%2BH8v4/0Gs0gB0tMAGHfQwzgTC9Y/sNuwrR/CUjd17sYgePcNMH1E47ETM8UgDZPp1%2BTKneuSY49vBTYiJP9Gm/3NTZj54H1mFLbA2BhT3T05GlL3A6zYChksfYw7qWlZMxVizVnAELV1G4Ft1KgEgLSwF9aWboE5ukBJYkElwtA54MDoH4a0HFp4FoB6R2fPVr809DL8BG0gBy9gPLv1CvFe4Nd8rZnKv8Gq2QvbfgGva2a9%2Bg2bDBrG3Y1vbrIm%2BMbdHgo4TqmhtjcU0tuT82Vvrzp%2Bos%2BXOBOmNkwt/jm2lrbl23VrQB2DP8Gfids7fxLvMVx6Z8zWg/6kIe42J7BXW02fe/5iB5AvuOZgTtMC6xiRxdByDx3ydOGFvIJD6HFbDNw7ugj%2BzgXgvSD2sSEHWhGw5lTsnZOYFSgSVOrDuzdac1Q4egLdYCvvMJ4CyzTGXXpBAA%3D%3D)). With that we reach 7140.9 GFLOPs: already about 78% of CuBLAS :-)
 
+```
+template <const int BM, const int BN, const int BK, const int TM, const int TN>
+__global__ void __launch_bounds__((BM * BN) / (TM * TN), 1)
+    sgemm2DBlocktiling(int M, int N, int K, float alpha, const float *A,
+                       const float *B, float beta, float *C) {
+    // advance the pointers for A and B to the right block
+    const uint A_row = blockIdx.y * BM;
+    const uint B_col = blockIdx.x * BN;
+    A = A + A_row * K;
+    B = B + B_col;
+
+    // we assume each thread calculates TM * TN entries of C
+    assert(blockDim.x == BM * BN / TM / TN);
+
+    // calculate the upper-left corner of the 2D blocktile within the block
+    // that our particular thread is computing
+    const uint thread_row_tmp = threadIdx.x / (BN / TN);
+    const uint thread_col_tmp = threadIdx.x % (BN / TN);
+    const uint thread_row = thread_row_tmp * TM;
+    const uint thread_col = thread_col_tmp * TN;
+
+    // advance the pointer for C to the right block, then the right thread
+    C = C + A_row * N + B_col;
+    C = C + thread_row * N + thread_col;
+
+    // initialize As and Bs
+    __shared__ float As[BM * BK];
+    __shared__ float Bs[BK * BN];
+    
+    
+    // calculate the upper-left corner of the chunk of A and B that our particular
+    // thread is loading into As and Bs
+    const uint num_threads = BM * BN / (TM * TN);
+
+    const uint As_rows_per_load = num_threads / BK;
+    const uint thread_As_entries_to_load = BM * BK / num_threads;
+    const uint thread_As_load_row = threadIdx.x / BK;
+    const uint thread_As_load_col = threadIdx.x % BK;
+
+    const uint Bs_rows_per_load = num_threads / BN;
+    const uint thread_Bs_entries_to_load = BK * BN / num_threads;
+    const uint thread_Bs_load_row = threadIdx.x / BN;
+    const uint thread_Bs_load_col = threadIdx.x % BN;
+
+    // initialize the parts of As and Bs we'll use for computing entries of C
+    float A_local[TM] = {0.0};
+    float B_local[TN] = {0.0};
+
+    // initialize the running reductions for C
+    float C_out[TM*TN] = {0.0};
+
+    if ((A_row + thread_row < M) && (B_col + thread_col < N)) {
+      for (int i = 0; i * BK < K; i++) {
+        // step 0: load from A and B into As and Bs
+        for (int load_idx = 0; load_idx < thread_As_entries_to_load; load_idx++) {
+          As[thread_As_load_row * BK + thread_As_load_col + load_idx * As_rows_per_load * BK] = A[thread_As_load_row * K + thread_As_load_col + load_idx * As_rows_per_load * K];
+        }
+        for (int load_idx = 0; load_idx < thread_Bs_entries_to_load; load_idx++) {
+          Bs[thread_Bs_load_row * BN + thread_Bs_load_col + load_idx * Bs_rows_per_load * BN] = B[thread_Bs_load_row * N + thread_Bs_load_col + load_idx * Bs_rows_per_load * N];
+        }
+
+        __syncthreads();
+
+        // step 1: load from As and Bs into A_local and B_local
+        for (int BK_idx = 0; BK_idx < BK; BK_idx++) {
+          for (int A_local_row = 0; A_local_row < TM; A_local_row++) {
+            A_local[A_local_row] = As[thread_row * BK + A_local_row * BK + BK_idx];
+          }
+          for (int B_local_col = 0; B_local_col < TN; B_local_col++) {
+            B_local[B_local_col] = Bs[thread_col + BK_idx * BN + B_local_col];
+          }
+        // step 2: compute C_out reduction for this blocktile
+          for (int C_out_row = 0; C_out_row < TM; C_out_row++) {
+            for (int C_out_col = 0; C_out_col < TN; C_out_col++) {
+              C_out[C_out_row * TN + C_out_col] += A_local[C_out_row] * B_local[C_out_col];
+            }
+          }
+        }
+
+        __syncthreads();
+        // step 3: advance pointers
+        A = A + BK;
+        B = B + BK * N;
+      }
+
+      for (int C_out_row = 0; C_out_row < TM; C_out_row++) {
+        for (int C_out_col = 0; C_out_col < TN; C_out_col++) {
+          C[C_out_row * N + C_out_col] = C_out[C_out_row * TN + C_out_col] * alpha + C[C_out_row * N + C_out_col] * beta;
+        }
+      }
+    }
+}
+```
 ---------------------------
 # Original README!
 
