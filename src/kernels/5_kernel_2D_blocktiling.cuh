@@ -50,8 +50,8 @@ __global__ void __launch_bounds__((BM * BN) / (TM * TN), 1)
     __shared__ float Bs[BK * BN];
 
     // initialize the parts of As and Bs we'll use for computing entries of C
-    float A_local[TM * BK] = {0.0};
-    float B_local[BK * TN] = {0.0};
+    float A_local[TM] = {0.0};
+    float B_local[TN] = {0.0};
 
     // initialize the running reductions for C
     float C_out[TM*TN] = {0.0};
@@ -71,18 +71,15 @@ __global__ void __launch_bounds__((BM * BN) / (TM * TN), 1)
         // step 1: load from As and Bs into A_local and B_local
         for (int BK_idx = 0; BK_idx < BK; BK_idx++) {
           for (int A_local_row = 0; A_local_row < TM; A_local_row++) {
-            A_local[A_local_row * BK + BK_idx] = As[thread_row * BK + A_local_row * BK + BK_idx];
+            A_local[A_local_row] = As[thread_row * BK + A_local_row * BK + BK_idx];
           }
           for (int B_local_col = 0; B_local_col < TN; B_local_col++) {
-            B_local[BK_idx * TN + B_local_col] = Bs[thread_col + BK_idx * BN + B_local_col];
+            B_local[B_local_col] = Bs[thread_col + BK_idx * BN + B_local_col];
           }
-        }
-
         // step 2: compute C_out reduction for this blocktile
-        for (int C_out_row = 0; C_out_row < TM; C_out_row++) {
-          for (int C_out_col = 0; C_out_col < TN; C_out_col++) {
-            for (int BK_idx = 0; BK_idx < BK; BK_idx++) {
-              C_out[C_out_row * TN + C_out_col] += A_local[C_out_row * BK + BK_idx] * B_local[BK_idx * TN + C_out_col];
+          for (int C_out_row = 0; C_out_row < TM; C_out_row++) {
+            for (int C_out_col = 0; C_out_col < TN; C_out_col++) {
+              C_out[C_out_row * TN + C_out_col] += A_local[C_out_row] * B_local[C_out_col];
             }
           }
         }
